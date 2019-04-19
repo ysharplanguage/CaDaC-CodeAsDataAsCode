@@ -2,7 +2,7 @@
 
 namespace System.Notations
 {
-    public delegate TModel Reducer<TContext, TModel>(TContext context, TModel outer, TModel model);
+    public delegate TModel Reducer<TContext, TModel>(TContext context, TModel outer, TModel model, object value);
 
     public interface IParser<TModel>
     {

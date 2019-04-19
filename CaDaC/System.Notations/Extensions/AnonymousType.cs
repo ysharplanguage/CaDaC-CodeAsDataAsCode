@@ -6,6 +6,10 @@ namespace System.Notations.Extensions
     public static class AnonymousType
     {
         public static T As<T>(T prototype, object instance) where T : class =>
+            instance as T;
+        public static bool Is<T>(T prototype, object instance) where T : class =>
+            instance is T;
+        public static T Cast<T>(T prototype, object instance) where T : class =>
             (T)instance;
         public static Action<T> Action<T>(Action<T> action, T prototype) =>
             action;
@@ -45,19 +49,31 @@ namespace System.Notations.Extensions
             function;
         public static Func<T1, T2, T3, T4, T5, T6, T7, T8, T9, TResult> Func<T1, T2, T3, T4, T5, T6, T7, T8, T9, TResult>(Func<T1, T2, T3, T4, T5, T6, T7, T8, T9, TResult> function, T1 prototype1, T2 prototype2, T3 prototype3, T4 prototype4, T5 prototype5, T6 prototype6, T7 prototype7, T8 prototype8, T9 prototype9, TResult resultPrototype) =>
             function;
-        public static T Class<T>(T prototype) where T : class =>
-            null;
         public static T New<T>(T prototype, params object[] arguments) where T : class =>
             (T)Activator.CreateInstance(typeof(T), arguments ?? new object[] { null });
-        public static T[] ArrayOf<T>(T prototype, params T[] values) where T : class =>
+        public static T[] ArrayOf<T>(T prototype) where T : class =>
+            default(T[]);
+        public static T[] NewArrayOf<T>(T prototype, params T[] values) where T : class =>
             values ?? new T[] { null };
         public static IDictionary<TKey, TValue> DictionaryOf<TKey, TValue>(TKey keyPrototype, TValue valuePrototype) where TKey : class where TValue : class =>
+            default(IDictionary<TKey, TValue>);
+        public static IDictionary<TKey, TValue> NewDictionaryOf<TKey, TValue>(TKey keyPrototype, TValue valuePrototype) where TKey : class where TValue : class =>
             new Dictionary<TKey, TValue>();
-        public static IList<T> ListOf<T>(T prototype, params T[] values) where T : class =>
+        public static IList<T> ListOf<T>(T prototype) where T : class =>
+            default(IList<T>);
+        public static IList<T> NewListOf<T>(T prototype, params T[] values) where T : class =>
             new List<T>(values ?? new T[] { null });
-        public static IReadOnlyList<T> ReadOnlyListOf<T>(T prototype, params T[] values) where T : class =>
+        public static IReadOnlyList<T> ReadOnlyListOf<T>(T prototype) where T : class =>
+            default(IReadOnlyList<T>);
+        public static IReadOnlyList<T> NewReadOnlyListOf<T>(T prototype, params T[] values) where T : class =>
             new List<T>(values ?? new T[] { null }).AsReadOnly();
-        public static ISet<T> SetOf<T>(T prototype, params T[] values) where T : class =>
+        public static ISet<T> SetOf<T>(T prototype) where T : class =>
+            default(ISet<T>);
+        public static ISet<T> NewSetOf<T>(T prototype, params T[] values) where T : class =>
             new HashSet<T>(values ?? new T[] { null });
+        public static Reducer<TContext, TModel> Reducer<TContext, TModel>(TContext prototype, TModel model) =>
+            default(Reducer<TContext, TModel>);
+        public static Reducer<TContext, TModel> NewReducer<TContext, TModel>(Reducer<TContext, TModel> prototype, Reducer<TContext, TModel> reducer) =>
+            reducer;
     }
 }

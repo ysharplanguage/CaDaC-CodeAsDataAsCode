@@ -7,7 +7,7 @@ namespace System.Notations.SExpressions
     public delegate object SExpressionBuilder(params object[] values);
 
     public delegate TExpression SExpressionBuilder<TExpression>(params object[] values)
-        where TExpression : ISExpression<TExpression>;
+        where TExpression : class;
 
     public interface ISExpression<TExpression> : IReadOnlyList<TExpression>
         where TExpression : ISExpression<TExpression>
@@ -86,7 +86,7 @@ namespace System.Notations.SExpressions
     public static class SExpressionFactory
     {
         public static TExpression Create<TExpression>(object content)
-            where TExpression : ISExpression<TExpression> =>
+            where TExpression : class =>
             (TExpression)Activator.CreateInstance(typeof(TExpression), new[] { content });
     }
 }

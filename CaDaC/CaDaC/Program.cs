@@ -6,6 +6,8 @@ using System.Notations;
 using System.Notations.SExpressions;
 using System.Notations.SExpressions.Extensions;
 
+using static System.Notations.Extensions.AnonymousType;
+
 namespace CaDaC // Code As Data / Data As Code
 {
     public class PicoNode : SExpression<PicoNode, string>
@@ -108,8 +110,31 @@ namespace CaDaC // Code As Data / Data As Code
         //TODO: CHANGE ME:
         private const string TEST_SEXPR_FILE_PATH = @"C:\Users\User\Desktop\small-sexpr.txt";
 
-        static void Main(string[] args)
+        static void Main(string[] arguments)
         {
+            var testLexicon =
+                new Lexicon
+                (
+                    new[]
+                    {
+                        new TokenType("identifier", "[A-Za-z_][A-Za-z_0-9]*", token => token.Match != "null" ? token.Match : null),
+                        new TokenType("text", "\"[^\"]*\"", token => token.Match),
+                        new TokenType("number", "[0-9]+", token => int.Parse(token.Match))
+                    }
+                );
+
+            // Anonymous goodness...
+            var NODE = new { Value = default(object) };
+            var ToNODE =
+                NewReducer
+                (
+                    Reducer(default(object), NODE),
+                    (context, outer, expression, value) =>
+                        expression ?? new { Value = value }
+                );
+            var coolParser = SExpressionParser.Create(testLexicon, ToNODE);
+            var coolModel = coolParser.Parse("  (  a  123 ( \"foo\" bar ( ) c ) ( null ) ) ", ToNODE);
+
             Console.WriteLine();
             Console.Write("Press a key>");
             Console.ReadKey();
@@ -164,17 +189,6 @@ namespace CaDaC // Code As Data / Data As Code
             Console.WriteLine($"{nameof(test2)}: {test2}");
 
             // Now for some parsing...
-
-            var testLexicon =
-                new Lexicon
-                (
-                    new[]
-                    {
-                        new TokenType("identifier", "[A-Za-z_][A-Za-z_0-9]*", token => token.Match != "null" ? token.Match : null),
-                        new TokenType("text", "\"[^\"]*\"", token => token.Match),
-                        new TokenType("number", "[0-9]+", token => int.Parse(token.Match))
-                    }
-                );
 
             var parse1 =
                 new SExpressionParser(testLexicon)
@@ -261,26 +275,33 @@ namespace CaDaC // Code As Data / Data As Code
                 .SExpressionReducer
                 (
                     default(object), // optional context (ignored)
-                    (ignored, outer, expression) =>
-                        !expression.IsAtom &&
-                        (expression.Count > 0) &&
-                        !expression[0].IsAtom &&    // all this to detect the "(tagName)" in "... ( (tagName) ... ) ..."
-                        expression[0].Count == 1 &&
-                        expression[0][0].IsAtom ?
+                    (ignored, outer, expression, value) =>
                         (
-                            outer == null ?
-                            new PicoDocument(new PicoElement(expression[0][0].Value, expression.Skip(1)))
+                            expression != null ?
+                            (
+                                !expression.IsAtom &&
+                                (expression.Count > 0) &&
+                                !expression[0].IsAtom &&    // all this to detect the "(tagName)" in "... ( (tagName) ... ) ..."
+                                expression[0].Count == 1 &&
+                                expression[0][0].IsAtom ?
+                                (
+                                    outer == null ?
+                                    new PicoDocument(new PicoElement(expression[0][0].Value, expression.Skip(1)))
+                                    :
+                                    (PicoNode)new PicoElement(expression[0][0].Value, expression.Skip(1))
+                                )
+                                :
+                                (
+                                    expression.IsAtom &&
+                                    expression.Value.StartsWith("\"") &&
+                                    expression.Value.EndsWith("\"") ?
+                                    new PicoText(expression.Value)
+                                    :
+                                    expression
+                                )
+                            )
                             :
-                            (PicoNode)new PicoElement(expression[0][0].Value, expression.Skip(1))
-                        )
-                        :
-                        (
-                            expression.IsAtom &&
-                            expression.Value.StartsWith("\"") &&
-                            expression.Value.EndsWith("\"") ?
-                            new PicoText(expression.Value)
-                            :
-                            expression
+                            SExpressionFactory.Create<PicoNode>(value)
                         )
                 );
 
@@ -328,35 +349,35 @@ namespace CaDaC // Code As Data / Data As Code
             Console.WriteLine();
             Console.WriteLine($"{nameof(parse3)}: {parse3}");
 
-            var input = System.IO.File.ReadAllText(TEST_SEXPR_FILE_PATH);
-            var parser = new SExpressionParser<PicoNode>();
+            //var input = System.IO.File.ReadAllText(TEST_SEXPR_FILE_PATH);
+            //var parser = new SExpressionParser<PicoNode>();
 
-            Console.WriteLine();
-            Console.Write("Press a key>");
-            Console.ReadKey();
+            //Console.WriteLine();
+            //Console.Write("Press a key>");
+            //Console.ReadKey();
 
-            var sw = new System.Diagnostics.Stopwatch();
-            sw.Start();
-            var parse4 = parser.Parse(input, new FastLexer(), reducer);
-            sw.Stop();
-            Console.WriteLine();
-            Console.WriteLine($"{nameof(parse4)}: elapsed: {sw.ElapsedMilliseconds.ToString("0,0")} ms.");
+            //var sw = new System.Diagnostics.Stopwatch();
+            //sw.Start();
+            //var parse4 = parser.Parse(input, new FastLexer(), reducer);
+            //sw.Stop();
+            //Console.WriteLine();
+            //Console.WriteLine($"{nameof(parse4)}: elapsed: {sw.ElapsedMilliseconds.ToString("0,0")} ms.");
 
-            Console.WriteLine();
-            Console.Write("Press a key>");
-            Console.ReadKey();
+            //Console.WriteLine();
+            //Console.Write("Press a key>");
+            //Console.ReadKey();
 
-            var body = (PicoElement)((PicoDocument)parse4).DocumentElement[0];
-            var firstParagraph = (PicoElement)body[0];
-            Console.WriteLine();
-            Console.WriteLine($"{nameof(parse4)}: '{body.TagName}' has {body.Count} child nodes '{firstParagraph.TagName}'");
+            //var body = (PicoElement)((PicoDocument)parse4).DocumentElement[0];
+            //var firstParagraph = (PicoElement)body[0];
+            //Console.WriteLine();
+            //Console.WriteLine($"{nameof(parse4)}: '{body.TagName}' has {body.Count} child nodes '{firstParagraph.TagName}'");
 
-            Console.WriteLine();
-            Console.Write("Press a key>");
-            Console.ReadKey();
+            //Console.WriteLine();
+            //Console.Write("Press a key>");
+            //Console.ReadKey();
 
-            Console.WriteLine();
-            Console.WriteLine($"{nameof(parse4)}: {parse4}");
+            //Console.WriteLine();
+            //Console.WriteLine($"{nameof(parse4)}: {parse4}");
 
             Console.WriteLine();
             Console.Write("The end>");
