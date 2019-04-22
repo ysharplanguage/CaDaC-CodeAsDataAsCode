@@ -105,13 +105,23 @@ namespace CaDaC // Code As Data / Data As Code
         public FastLexer() : base(new[] { Identifier, Text, Number }) { }
     }
 
+    public class MyVisitor : System.Linq.Expressions.ExpressionVisitor
+    {
+        private readonly System.Notations.Runtime.DoubleDispatchObject dispatch;
+
+        public MyVisitor() =>
+            dispatch = new System.Notations.Runtime.DoubleDispatchObject(this);
+    }
+
     class Program
     {
         //TODO: CHANGE ME:
-        private const string TEST_SEXPR_FILE_PATH = @"C:\Users\User\Desktop\small-sexpr.txt";
+        private const string TEST_SEXPR_FILE_PATH = @"C:\Users\User\Desktop\CaDaC\CaDaC\CaDaC\small-sexpr.txt";
 
         static void Main(string[] arguments)
         {
+            var v = new MyVisitor();
+
             var testLexicon =
                 new Lexicon
                 (
@@ -124,16 +134,27 @@ namespace CaDaC // Code As Data / Data As Code
                 );
 
             // Anonymous goodness...
-            var NODE = new { Value = default(object) };
-            var ToNODE =
+            var AnonymousModel = new { Content = default(object) };
+
+            var AnonymousReducer = Reducer(default(object), AnonymousModel);
+
+            var toAnonymousModel =
                 NewReducer
                 (
-                    Reducer(default(object), NODE),
+                    AnonymousReducer,
                     (context, outer, expression, value) =>
-                        expression ?? new { Value = value }
+                        expression ?? new { Content = value }
                 );
-            var coolParser = SExpressionParser.Create(testLexicon, ToNODE);
-            var coolModel = coolParser.Parse("  (  a  123 ( \"foo\" bar ( ) c ) ( null ) ) ", ToNODE);
+
+            var aParser = SExpressionParser.Create(testLexicon, AnonymousReducer);
+            var aModel = aParser.Parse("  (  a  123 ( \"foo\" bar ( ) c ) ( null ) ) ", toAnonymousModel);
+
+            System.Diagnostics.Debug.Assert(Is(AnonymousModel, aModel));
+            System.Diagnostics.Debug.Assert(Is(ListOf(AnonymousModel), As(AnonymousModel, aModel).Content));
+            System.Diagnostics.Debug.Assert(As(ListOf(AnonymousModel), As(AnonymousModel, aModel).Content)[0].Content is string);
+            System.Diagnostics.Debug.Assert(As(ListOf(AnonymousModel), As(AnonymousModel, aModel).Content)[0].Content as string == "a");
+            System.Diagnostics.Debug.Assert(As(ListOf(AnonymousModel), As(AnonymousModel, aModel).Content)[1].Content is int);
+            System.Diagnostics.Debug.Assert((int)As(ListOf(AnonymousModel), As(AnonymousModel, aModel).Content)[1].Content == 123);
 
             Console.WriteLine();
             Console.Write("Press a key>");
@@ -238,7 +259,7 @@ namespace CaDaC // Code As Data / Data As Code
             {
                 error1 = ex.Message;
             }
-            System.Diagnostics.Debug.Assert(error1.StartsWith("syntax error: end of input expected but found identifier garbage at line 4, column 2 (offset 42)"));
+            System.Diagnostics.Debug.Assert(error1.StartsWith("syntax error: end of input expected but found identifier garbage at line 4, column 2"));
 
             string error2 = null;
             try
@@ -250,7 +271,7 @@ namespace CaDaC // Code As Data / Data As Code
             {
                 error2 = ex.Message;
             }
-            System.Diagnostics.Debug.Assert(error2.StartsWith("syntax error: ) expected but found end of input at line 2, column 6 (offset 18)"));
+            System.Diagnostics.Debug.Assert(error2.StartsWith("syntax error: ) expected but found end of input at line 2, column 6"));
 
             string error3 = null;
             try
@@ -264,7 +285,7 @@ namespace CaDaC // Code As Data / Data As Code
             {
                 error3 = ex.Message;
             }
-            System.Diagnostics.Debug.Assert(error3.StartsWith("syntax error: ) expected but found unexpected ?!? at line 3, column 11 (offset 26)"));
+            System.Diagnostics.Debug.Assert(error3.StartsWith("syntax error: ) expected but found unexpected ?!? at line 3, column 11"));
 
             // And last but not least...
 

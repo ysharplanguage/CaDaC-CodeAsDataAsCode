@@ -41,6 +41,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Runtime\DoubleDispatchObjectExtensions.cs" />
     <Compile Include="Runtime\DoubleDispatchObject.cs" />
     <Compile Include="Extensions\AnonymousType.cs" />
     <Compile Include="Parsing.cs" />

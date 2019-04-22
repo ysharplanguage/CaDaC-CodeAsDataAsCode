@@ -1,4 +1,32 @@
-﻿using System;
+﻿/*
+    Copyright (c) 2018-2019 Cyril Jandia
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+``Software''), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND, EXPRESSED
+OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL CYRIL JANDIA BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of Cyril Jandia shall
+not be used in advertising or otherwise to promote the sale, use or
+other dealings in this Software without prior written authorization
+from Cyril Jandia.
+
+Inquiries : ysharp {dot} design {at} gmail {dot} com
+ */
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -67,76 +95,200 @@ namespace System.Notations.Runtime
 
     public class DoubleDispatchObject
     {
-        private readonly IDictionary<Type, Action<object>> _action1 = new Dictionary<Type, Action<object>>();
-        private readonly IDictionary<Type, Func<object, object>> _function1 = new Dictionary<Type, Func<object, object>>();
-        private readonly object _target;
+        private readonly IDictionary<string, IDictionary<Type, Tuple<Action<object>, Type>>> _action1 = new Dictionary<string, IDictionary<Type, Tuple<Action<object>, Type>>>();
+        private readonly IDictionary<string, IDictionary<Type, Tuple<Func<object, object>, Type>>> _function1 = new Dictionary<string, IDictionary<Type, Tuple<Func<object, object>, Type>>>();
 
-        private void PrepareBinder<TBound>(IDictionary<Type, TBound> dispatch, int parameterCount, bool isFunc)
+        private void PopulateMultimethodMap<TBound>(IDictionary<string, IDictionary<Type, Tuple<TBound, Type>>> multimethodMap, bool forFunctionType)
         {
-            _target
+            ParameterInfo[] parameters;
+            Target
             .GetType()
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
             .Where
             (
                 m =>
-                    (isFunc ? m.ReturnType != typeof(void) : m.ReturnType == typeof(void)) &&
-                    m.GetParameters().Length == parameterCount &&
-                    !m.GetParameters().Any(p => p.ParameterType.ContainsGenericParameters)
+                    (m.IsPublic || m.IsFamily || m.IsFamilyOrAssembly) &&
+                    (forFunctionType ? m.ReturnType != typeof(void) : m.ReturnType == typeof(void)) &&
+                    (parameters = m.GetParameters()).Length == 1 &&
+                    !parameters[0].ParameterType.ContainsGenericParameters &&
+                    !
+                    (
+                        (m.Name == "Equals") &&
+                        (parameters[0].ParameterType == typeof(object)) &&
+                        (m.ReturnType == typeof(bool))
+                    )
             )
             .Aggregate
             (
-                dispatch,
+                multimethodMap,
                 (map, method) =>
                 {
-                    var parameterTypes = method.GetParameters().Select(p => p.ParameterType).ToArray();
+                    var parameterType = method.GetParameters()[0].ParameterType;
                     var returnType = method.ReturnType != typeof(void) ? method.ReturnType : null;
-                    var binder = Binder.Create<TBound>(_target, method, parameterTypes, returnType);
-                    map.Add(parameterTypes[0], binder.Bound);
-                    return dispatch;
+                    var binder = Binder.Create<TBound>(Target, method, new[] { parameterType }, returnType);
+                    if (!multimethodMap.TryGetValue(method.Name, out var boundTypeMap))
+                    {
+                        multimethodMap.Add(method.Name, boundTypeMap = new Dictionary<Type, Tuple<TBound, Type>>());
+                    }
+                    if (!boundTypeMap.ContainsKey(parameterType))
+                    {
+                        boundTypeMap.Add(parameterType, Tuple.Create(binder.Bound, returnType));
+                    }
+                    return map;
                 }
             );
+        }
+
+        protected static bool CovarianceCheck(Type functionReturnType, Type boundFunctionReturnType) =>
+            functionReturnType.IsAssignableFrom(boundFunctionReturnType);
+
+        protected virtual void Initialize()
+        {
+            PopulateMultimethodMap(_action1, false);
+            PopulateMultimethodMap(_function1, true);
+        }
+
+        protected virtual bool TryBindAction1(string methodName, Type argType, out Action<object> bound)
+        {
+            methodName = !string.IsNullOrEmpty(methodName) ? methodName : throw new ArgumentException("cannot be null or empty", nameof(methodName));
+            bound = null;
+            if (_action1.TryGetValue(methodName, out var boundTypeMap))
+            {
+                if (boundTypeMap.TryGetValue(argType, out var tuple))
+                {
+                    bound = tuple.Item1;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        protected virtual bool TryInvoke<T>(string methodName, T arg)
+        {
+            var type = arg?.GetType();
+            if ((type != null) && TryBindAction1(methodName, type, out var bound))
+            {
+                bound(arg);
+                return true;
+            }
+            return false;
+        }
+
+        protected virtual bool TryBindFunc1(string methodName, Type argType, Type returnType, out Func<object, object> bound)
+        {
+            methodName = !string.IsNullOrEmpty(methodName) ? methodName : throw new ArgumentException("cannot be null or empty", nameof(methodName));
+            bound = null;
+            if (_function1.TryGetValue(methodName, out var boundTypeMap))
+            {
+                if (boundTypeMap.TryGetValue(argType, out var tuple) && CovarianceCheck(returnType, tuple.Item2))
+                {
+                    bound = tuple.Item1;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        protected virtual bool TryInvoke<T, TResult>(string methodName, T arg, TResult defaultResult, out TResult result)
+        {
+            var type = arg?.GetType();
+            result = defaultResult;
+            if ((type != null) && TryBindFunc1(methodName, type, typeof(TResult), out var bound))
+            {
+                result = (TResult)bound(arg);
+                return true;
+            }
+            return false;
+        }
+
+        protected object Target { get; private set; }
+
+        /// <summary>
+        /// Creates a surrogate of the action delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Action<T> CreateSurrogate<T>(Action<T> action, T prototype) =>
+            CreateSurrogate(action, prototype, null);
+
+        /// <summary>
+        /// Creates a surrogate of the action delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Action<T> CreateSurrogate<T>(Action<T> action, T prototype, Action orElse)
+        {
+            action = action ?? throw new ArgumentNullException(nameof(action));
+            var target = action.Target ?? throw new ArgumentException("must be bound", nameof(action));
+            var dispatch = new DoubleDispatchObject(target);
+            var methodName = action.GetMethodInfo().Name;
+            Action<T> surrogate =
+                arg =>
+                    dispatch.Via(methodName, arg, orElse);
+            return surrogate;
+        }
+
+        /// <summary>
+        /// Creates a surrogate of the function delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Func<T, TResult> CreateSurrogate<T, TResult>(Func<T, TResult> function, T prototype) =>
+            CreateSurrogate(function, prototype, null, default(TResult));
+
+        /// <summary>
+        /// Creates a surrogate of the function delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Func<T, TResult> CreateSurrogate<T, TResult>(Func<T, TResult> function, T prototype, Func<TResult> orElse) =>
+            CreateSurrogate(function, prototype, orElse, default(TResult));
+
+        /// <summary>
+        /// Creates a surrogate of the function delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Func<T, TResult> CreateSurrogate<T, TResult>(Func<T, TResult> function, T prototype, TResult defaultResult) =>
+            CreateSurrogate(function, prototype, null, defaultResult);
+
+        /// <summary>
+        /// Creates a surrogate of the function delegate, which enables double dispatch in the concrete type of its target
+        /// </summary>
+        public static Func<T, TResult> CreateSurrogate<T, TResult>(Func<T, TResult> function, T prototype, Func<TResult> orElse, TResult defaultResult)
+        {
+            function = function ?? throw new ArgumentNullException(nameof(function));
+            var target = function.Target ?? throw new ArgumentException("must be bound", nameof(function));
+            var dispatch = new DoubleDispatchObject(target);
+            var methodName = function.GetMethodInfo().Name;
+            Func<T, TResult> surrogate =
+                arg =>
+                    dispatch.Via(methodName, arg, orElse, defaultResult);
+            return surrogate;
         }
 
         public DoubleDispatchObject() : this(null) { }
 
         public DoubleDispatchObject(object target)
         {
-            _target = target ?? this;
-            PrepareBinder(_action1, 1, false);
-            PrepareBinder(_function1, 1, true);
+            Target = target ?? this;
+            Initialize();
         }
 
-        public void Via<T>(Action<T> action, T arg) =>
-            Via(action, arg, null);
+        public void Via<T>(string methodName, T arg) =>
+            Via(methodName, arg, null);
 
-        public void Via<T>(Action<T> action, T arg, Action orElse)
+        public void Via<T>(string methodName, T arg, Action orElse)
         {
-            var type = arg?.GetType();
-            if ((type != null) && _action1.TryGetValue(type, out var bound))
+            if (!TryInvoke(methodName, arg))
             {
-                bound(arg);
-                return;
+                orElse?.Invoke();
             }
-            orElse?.Invoke();
         }
 
-        public TResult Via<T, TResult>(Func<T, TResult> function, T arg) =>
-            Via(function, arg, null, default(TResult));
+        public TResult Via<T, TResult>(string methodName, T arg, Func<TResult> orElse) =>
+            Via(methodName, arg, orElse, default(TResult));
 
-        public TResult Via<T, TResult>(Func<T, TResult> function, T arg, Func<TResult> orElse) =>
-            Via(function, arg, orElse, default(TResult));
+        public TResult Via<T, TResult>(string methodName, T arg, TResult defaultResult) =>
+            Via(methodName, arg, null, defaultResult);
 
-        public TResult Via<T, TResult>(Func<T, TResult> function, T arg, TResult defaultResult) =>
-            Via(function, arg, null, defaultResult);
-
-        public TResult Via<T, TResult>(Func<T, TResult> function, T arg, Func<TResult> orElse, TResult defaultResult)
+        public TResult Via<T, TResult>(string methodName, T arg, Func<TResult> orElse, TResult defaultResult)
         {
-            var type = arg?.GetType();
-            if ((type != null) && _function1.TryGetValue(type, out var bound))
+            if (!TryInvoke(methodName, arg, defaultResult, out var result))
             {
-                return (TResult)bound(arg);
+                result = orElse != null ? orElse() : result;
             }
-            return orElse != null ? orElse() : defaultResult;
+            return result;
         }
     }
 }
